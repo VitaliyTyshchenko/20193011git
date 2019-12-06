@@ -14,6 +14,7 @@ pipeline {
                     echo "Hello from bash"
                     whoami
                     df -h
+					echo 'version 2'
                     echo `date`
                 '''
             }
