@@ -1,2 +1,3 @@
 ip a
 echo 'git hub'
+echo `date`
