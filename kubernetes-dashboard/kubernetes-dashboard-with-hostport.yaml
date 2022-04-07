@@ -4,8 +4,8 @@
         kind: Namespace
         metadata:
           name: kubernetes-dashboard
-        #kubernetesdashboardv2.0.5
-        #https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.5/aio/deploy/recommended.yaml
+        #kubernetesdashboardv2.5.0
+        #https://raw.githubusercontent.com/kubernetes/dashboard/v2.5.0/aio/deploy/recommended.yaml
         ---
         apiVersion: v1
         kind: ServiceAccount
@@ -100,7 +100,7 @@
               hostNetwork: true
               containers:
                 - name: kubernetes-dashboard
-                  image: kubernetesui/dashboard:v2.0.5
+                  image: kubernetesui/dashboard:v2.5.0
                   imagePullPolicy: Always
                   ports:
                     - containerPort: 8443
