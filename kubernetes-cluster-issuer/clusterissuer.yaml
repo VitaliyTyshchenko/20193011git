@@ -1,0 +1,52 @@
+---
+apiVersion: cert-manager.io/v1alpha3
+kind: ClusterIssuer
+#https://letsencrypt.status.io/
+#https://cert-manager.io/docs/concepts/acme-orders-challenges/#challenge-lifecycle
+metadata:
+  name: test-selfsigned-cert
+  namespace: cert-manager-test
+spec:
+  selfSigned: {}
+
+
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: ClusterIssuer
+#https://letsencrypt.status.io/
+#https://cert-manager.io/docs/concepts/acme-orders-challenges/#challenge-lifecycle
+metadata:
+  name: test-staging-cert
+  namespace: cert-manager-test
+spec:
+    acme:
+      email: 111111111111111111
+      privateKeySecretRef:
+        name: test-staging-cert
+      server: https://acme-staging-v02.api.letsencrypt.org/directory
+      solvers:
+      - http01:
+          ingress:
+            class: nginx
+
+
+---
+apiVersion: cert-manager.io/v1alpha3
+kind: ClusterIssuer
+#https://letsencrypt.status.io/
+#https://cert-manager.io/docs/concepts/acme-orders-challenges/#challenge-lifecycle
+metadata:
+  name: test-production-cert
+  namespace: cert-manager-test
+spec:
+    acme:
+      email: 111111111111111111
+      privateKeySecretRef:
+        name: test-production-cert
+      server: https://acme-v02.api.letsencrypt.org/directory
+      solvers:
+      - http01:
+          ingress:
+            class: nginx
+
+
