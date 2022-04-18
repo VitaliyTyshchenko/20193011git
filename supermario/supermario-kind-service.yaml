@@ -1,5 +1,8 @@
 ---
 kind: Service
+#kubectl create deployment supermario  --image=pengbai/docker-supermario
+#kubectl  expose deployment/supermario --name=supermario --port=8080
+#kubectl create secret tls certtls --cert=crt --key=key
 apiVersion: v1
 metadata:
  labels:
@@ -12,4 +15,28 @@ spec:
      targetPort: 8080
  selector:
    app: supermario
-   
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+name: marioingress
+namespace: default
+spec:
+rules:
+- host: 11111111
+  http:
+    paths:
+    - pathType: Prefix
+      path: "/"
+      backend:
+        service:
+          name: marioservice
+          port:
+            number: 8080
+tls:
+ - hosts:
+     - 11111111
+
+#kubectl  scale deployment/supermario --replicas=2
+#kubectl expose deployment supermario --name=supermarioloadbalancer --port=80 --target-port=8080 --type=LoadBalancer
+#kubectl expose deployment supermario --name=supermarioloadbalancer --port=80 --target-port=8080 --type=NodePort
