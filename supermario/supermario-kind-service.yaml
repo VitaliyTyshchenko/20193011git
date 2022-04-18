@@ -40,3 +40,15 @@ tls:
 #kubectl  scale deployment/supermario --replicas=2
 #kubectl expose deployment supermario --name=supermarioloadbalancer --port=80 --target-port=8080 --type=LoadBalancer
 #kubectl expose deployment supermario --name=supermarioloadbalancer --port=80 --target-port=8080 --type=NodePort
+#            spec:
+#              hostNetwork: true
+#              nodeName: {master_node_hostname}
+#              containers:
+#                - name: kubernetes-dashboard
+#                  image: kubernetesui/dashboard:v2.5.0
+#                  imagePullPolicy: Always
+#                  ports:
+#                   - containerPort: 8443
+#                      protocol: TCP
+#                      hostPort: 8443
+
