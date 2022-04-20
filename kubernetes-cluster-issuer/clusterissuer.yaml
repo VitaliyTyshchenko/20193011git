@@ -6,6 +6,13 @@ metadata:
   labels:
     certmanager.k8s.io/disable-validation: "true"
 
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-selfsigned-cert
+
+
 
 ---
 apiVersion: cert-manager.io/v1alpha3
