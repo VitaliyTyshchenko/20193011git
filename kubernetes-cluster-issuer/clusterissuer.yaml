@@ -1,3 +1,5 @@
+
+
 ---
 apiVersion: cert-manager.io/v1alpha3
 kind: ClusterIssuer
@@ -20,7 +22,7 @@ metadata:
   namespace: cert-manager-test
 spec:
     acme:
-      email: 111111111111111111
+      #email: 111111111111111111
       privateKeySecretRef:
         name: test-staging-cert
       server: https://acme-staging-v02.api.letsencrypt.org/directory
@@ -40,7 +42,7 @@ metadata:
   namespace: cert-manager-test
 spec:
     acme:
-      email: 111111111111111111
+      #email: 111111111111111111
       privateKeySecretRef:
         name: test-production-cert
       server: https://acme-v02.api.letsencrypt.org/directory
