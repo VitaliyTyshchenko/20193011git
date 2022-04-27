@@ -17,15 +17,18 @@ spec:
    app: supermario
 
 
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
  name: ingressmario
  namespace: default
+ annotations:
+   cert-manager.io/cluster-issuer: test-production-cert
 spec:
  rules:
- - host: 11111111
+ - host: 11111111111
    http:
      paths:
      - pathType: Prefix
@@ -36,8 +39,10 @@ spec:
            port:
              number: 80
  tls:
-  - hosts:
-      - 1111111
+ - hosts:
+   - 11111111111
+   secretName: 11111111111
+
 
 
 
