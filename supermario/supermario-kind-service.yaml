@@ -15,27 +15,31 @@ spec:
      targetPort: 8080
  selector:
    app: supermario
+
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-name: marioingress
-namespace: default
+ name: ingressmario
+ namespace: default
 spec:
-rules:
-- host: 11111111
-  http:
-    paths:
-    - pathType: Prefix
-      path: "/"
-      backend:
-        service:
-          name: marioservice
-          port:
-            number: 8080
-tls:
- - hosts:
-     - 11111111
+ rules:
+ - host: 11111111
+   http:
+     paths:
+     - pathType: Prefix
+       path: "/"
+       backend:
+         service:
+           name: supermarioloadbalancer
+           port:
+             number: 80
+ tls:
+  - hosts:
+      - 1111111
+
+
 
 #kubectl  scale deployment/supermario --replicas=2
 #kubectl expose deployment supermario --name=supermarioloadbalancer --port=80 --target-port=8080 --type=LoadBalancer
