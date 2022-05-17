@@ -1,7 +1,8 @@
 ---
 kind: Service
 #kubectl create deployment supermario  --image=pengbai/docker-supermario
-#kubectl  expose deployment/supermario --name=supermario --port=8080
+#kubectl  scale deployment/supermario --replicas=2
+#kubectl expose deployment supermario --name=supermarioloadbalancer --port=80 --target-port=8080 --type=LoadBalancer
 #kubectl create secret tls certtls --cert=crt --key=key
 apiVersion: v1
 metadata:
@@ -49,6 +50,7 @@ spec:
 #kubectl  scale deployment/supermario --replicas=2
 #kubectl expose deployment supermario --name=supermarioloadbalancer --port=80 --target-port=8080 --type=LoadBalancer
 #kubectl expose deployment supermario --name=supermarioloadbalancer --port=80 --target-port=8080 --type=NodePort
+#kubectl  expose deployment/supermario --name=supermario --port=8080
 #            spec:
 #              hostNetwork: true
 #              nodeName: {master_node_hostname}
