@@ -22,3 +22,4 @@ spec:
            cpu: "20"
          requests:
            cpu: "10"
+#kubectl get events --sort-by=.metadata.creationTimestamp | grep Insufficient
