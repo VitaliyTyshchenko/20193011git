@@ -1,22 +1,24 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  labels:
-    app: nginx
-  name: nginx
+  name: nginx-test-flexible-nodes
   namespace: default
 spec:
   replicas: 1
-  revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app: nginx
+      app: nginx-test-flexible-nodes
   template:
     metadata:
       labels:
-        app: nginx
+        app: nginx-test-flexible-nodes
     spec:
       containers:
       - image: nginx
-        name: nginx
-        resources: {}
+        name: nginx-test-flexible-nodes
+        resources: 
+         limits:
+           cpu: "20"
+         requests:
+           cpu: "10"
