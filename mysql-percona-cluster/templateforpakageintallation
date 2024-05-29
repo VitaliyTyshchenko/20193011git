@@ -1,0 +1,69 @@
+##############################################################
+server='$IP'
+port='22'
+login='root'
+serverpassword='$password'
+##############################################################
+
+##############################################################
+echo -e "\e[1;35mStarting time = $(date +%T)\e[0m"
+before="$(date +%s)"
+##############################################################
+echo `date` > start.txt
+
+#########################################################
+
+# stage 1 package installation
+sshpass -p $serverpassword  ssh  -o StrictHostKeyChecking=no  \
+$login@$server -p $port \
+"
+mkdir /root/perconainstallation
+cd /root/perconainstallation
+
+apt update
+curl -O https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+apt install -y gnupg2 mc rsync binutils
+apt install -y gnupg2 lsb-release ./percona-release_latest.generic_all.deb
+apt update
+cat /etc/apt/sources.list.d/percona-original-release.list > percona-original-release.list
+
+
+percona-release setup pxc-80
+DEBIAN_FRONTEND=noninteractive apt install -y percona-xtradb-cluster
+cat /var/lib/mysql/grastate.dat
+"
+
+
+# stage 2 configuration
+sshpass -p $serverpassword scp  -P $port \
+-o StrictHostKeyChecking=no \
+sqlcommandcreatedb  \
+$login@$server:/root/perconainstallation/sqlcommandcreatedb
+
+sshpass -p $serverpassword  ssh  -o StrictHostKeyChecking=no  \
+$login@$server -p $port \
+"
+cd /root/perconainstallation && \
+chmod 777 sqlcommandcreatedb && \
+./sqlcommandcreatedb
+"
+
+#########################################################
+
+
+
+################################################################################
+echo -e "\e[1;35mThe process lasted = $(date +%T)\e[0m"
+# Calculating time
+after="$(date +%s)"
+elapsed="$((after - before))"
+hours=$((elapsed / 3600))
+elapsed=$((elapsed - hours * 3600))
+minutes=$((elapsed / 60))
+seconds=$((elapsed - minutes * 60))
+echo -e "\e[1;35mDone: $hours hours $minutes minutes $seconds seconds\e[0m"
+echo -e "\e[1;35mDone: $hours hours $minutes minutes $seconds seconds\e[0m">done.txt
+################################################################################
+
+echo `date` >> done.txt
+
