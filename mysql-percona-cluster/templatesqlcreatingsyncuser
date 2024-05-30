@@ -1,0 +1,23 @@
+############################
+
+servername="'%'"
+port='3306'
+newuser='$mysqlsyncusername'
+newpassword='$mysqlsyncuserpassword'
+
+############################
+
+systemctl start mysql
+
+############################
+
+echo " CREATE USER "$newuser"@"$servername"  "| mysql
+echo " ALTER USER "$newuser"@"$servername" IDENTIFIED WITH mysql_native_password BY  '$newpassword' ; " | mysql
+echo " GRANT ALL PRIVILEGES ON *.* TO "$newuser"@"$servername"  WITH GRANT OPTION " |  mysql
+echo " FLUSH PRIVILEGES; " | mysql
+
+############################
+
+mysql -e "SELECT User, Host FROM mysql.user;"
+
+############################
