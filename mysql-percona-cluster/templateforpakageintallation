@@ -35,21 +35,41 @@ cat /var/lib/mysql/grastate.dat
 "
 
 
-# stage 2 configuration
+#########################################################
+
+# stage 2, updating root password
 sshpass -p $serverpassword scp  -P $port \
 -o StrictHostKeyChecking=no \
-sqlcommandcreatedb  \
-$login@$server:/root/perconainstallation/sqlcommandcreatedb
+2sqlsettingrootpassword  \
+$login@$server:/root/perconainstallation/2sqlsettingrootpassword
 
 sshpass -p $serverpassword  ssh  -o StrictHostKeyChecking=no  \
 $login@$server -p $port \
 "
 cd /root/perconainstallation && \
-chmod 777 sqlcommandcreatedb && \
-./sqlcommandcreatedb
+chmod 777 2sqlsettingrootpassword && \
+./2sqlsettingrootpassword
 "
 
 #########################################################
+
+# stage 2, creatinging sync user
+sshpass -p $serverpassword scp  -P $port \
+-o StrictHostKeyChecking=no \
+2sqlcreatingsyncuser  \
+$login@$server:/root/perconainstallation/2sqlcreatingsyncuser
+
+sshpass -p $serverpassword  ssh  -o StrictHostKeyChecking=no  \
+$login@$server -p $port \
+"
+cd /root/perconainstallation && \
+chmod 777 2sqlcreatingsyncuser && \
+./2sqlcreatingsyncuser
+"
+
+#########################################################
+
+
 
 
 
