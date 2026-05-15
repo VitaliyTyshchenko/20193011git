@@ -1,0 +1,42 @@
+curl ipinfo.io
+{
+ "ip": "172.208.54.47",
+ "city": "Washington",
+ "region": "Virginia",
+ "country": "US",
+ "loc": "38.7135,-78.1594",
+ "org": "AS8075 Microsoft Corporation",
+ "postal": "22747",
+ "timezone": "America/New_York",
+ "readme": "https://ipinfo.io/missingauth"
+}
+
+
+curl ip-api.com
+{
+ "status"       : "success",
+ "continent"    : "North America",
+ "continentCode": "NA",
+ "country"      : "United States",
+ "countryCode"  : "US",
+ "region"       : "VA",
+ "regionName"   : "Virginia",
+ "city"         : "Boydton",
+ "district"     : "",
+ "zip"          : "23917",
+ "lat"          : 36.677696,
+ "lon"          : -78.37471,
+ "timezone"     : "America/New_York",
+ "offset"       : -14400,
+ "currency"     : "USD",
+ "isp"          : "Microsoft Corporation",
+ "org"          : "Microsoft Azure Cloud (eastus)",
+ "as"           : "AS8075 Microsoft Corporation",
+ "asname"       : "MICROSOFT-CORP-MSN-AS-BLOCK",
+ "mobile"       : false,
+ "proxy"        : false,
+ "hosting"      : true,
+ "query"        : "172.208.54.47"
+}
+
+
