@@ -39,4 +39,18 @@ curl ip-api.com
  "query"        : "172.208.54.47"
 }
 
+https://ipinfo.io/8.8.8.8/json
+{
+  "ip": "8.8.8.8",
+  "hostname": "dns.google",
+  "city": "Mountain View",
+  "region": "California",
+  "country": "US",
+  "loc": "37.4056,-122.0775",
+  "org": "AS15169 Google LLC",
+  "postal": "94043",
+  "timezone": "America/Los_Angeles",
+  "readme": "https://ipinfo.io/missingauth",
+  "anycast": true
+}
 
