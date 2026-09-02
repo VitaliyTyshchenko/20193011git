@@ -1,0 +1,25 @@
+name: test self-hosted runner
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: self-hosted
+
+    steps:
+      - run: |
+          date
+          echo "self-hosted runner"
+          hostname
+          uname -a
+          sleep 58
+          date
+
