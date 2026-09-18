@@ -1,0 +1,231 @@
+
+
+# Docker Swarm
+
+# sqlitedatabase container entirely ephemeral nexcloud with talk app spreed
+
+# blue-green deployment with traffic segmentation routing by User-Agent 
+# firefox-service-blue@swarm
+# edge-service-green@swarm
+
+
+
+
+
+networks:
+  public-net:
+    driver: overlay
+  internal-net:
+    driver: overlay
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # TRAEFIK REVERSE PROXY (Exposed to host port 1234)
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v3.0
+    ports:
+      - "1234:80"     # Single public endpoint for clients
+      - "8080:8080"   # Traefik Dashboard UI
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+
+
+
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.swarm=true"
+      - "--providers.swarm.network=nextcloud_stack_internal-net"
+
+
+      - "--providers.swarm.exposedByDefault=false"
+      - "--providers.docker.exposedByDefault=false"
+
+
+      - "--providers.file.directory=/1234"
+      - "--providers.file.watch=true"
+
+
+      - "--entrypoints.web.address=:80"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+
+
+
+
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /1234
+
+        cat > /1234/dynamic.yml <<'EOF'
+        http:
+          routers:
+            firefox-blue:
+              rule: "PathPrefix(`/`) && HeaderRegexp(`User-Agent`, `Firefox`)"
+              priority: 100
+              entryPoints:
+                - web
+              service: firefox-service-blue@file
+
+            edge-green:
+              rule: "PathPrefix(`/`) && HeaderRegexp(`User-Agent`, `Edg/`)"
+              priority: 100
+              entryPoints:
+                - web
+              service: edge-service-green@file
+
+            default:
+              rule: "PathPrefix(`/`)"
+              priority: 1
+              entryPoints:
+                - web
+              service: nextcloud-weighted@file
+
+          services:
+            firefox-service-blue:
+              weighted:
+                services:
+                  - name: blue@swarm
+                    weight: 100
+
+            edge-service-green:
+              weighted:
+                services:
+                  - name: green@swarm
+                    weight: 100
+
+            nextcloud-weighted:
+              weighted:
+                services:
+                  - name: blue@swarm
+                    weight: 50
+                  - name: green@swarm
+                    weight: 50
+        EOF
+
+        exec traefik "$$@"
+
+
+
+    networks:
+      - public-net
+      - internal-net
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - "traefik.enable=false"
+
+  # ---------------------------------------------------------------------------
+  # NEXTCLOUD BLUE (v25.0.4)
+  # ---------------------------------------------------------------------------
+
+
+  nextcloud_blue:
+    image: nextcloud:25.0.4-apache
+    environment:
+      - SQLITE_DATABASE=sqlitedatabasexample
+      - NEXTCLOUD_ADMIN_USER_FILE=/1234/ncadminuser
+      - NEXTCLOUD_ADMIN_PASSWORD_FILE=/1234/ncadminpassword
+      - NEXTCLOUD_TRUSTED_DOMAINS_FILE=/1234/nctrusteddomains
+
+    tmpfs:
+      - /var/www:rw,exec,nosuid,size=1g
+      - /1234/:ro,exec,nosuid,size=1m
+    volumes:
+      - ../../ncadminuser.txt:/1234/ncadminuser:ro
+      - ../../ncadminpassword.txt:/1234/ncadminpassword:ro
+      - ../../nctrusteddomains.txt:/1234/nctrusteddomains:ro
+     
+    entrypoint: ["/bin/bash", "-c", "
+      /entrypoint.sh apache2-foreground &
+      sleep 5m && su -s /bin/sh www-data -c 'php occ app:install spreed' || true &&
+      echo '<h1>BLUE INSTANCE </h1>' > /var/www/html/instance-id.html &&
+      wait
+    "]
+    networks:
+      - internal-net
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.services.blue.loadbalancer.server.port=80"
+        - "traefik.http.routers.blue.entrypoints=web"
+        - "traefik.http.routers.blue.rule=PathPrefix(`/`)"
+
+
+
+
+  # ---------------------------------------------------------------------------
+  # NEXTCLOUD GREEN (v25.0.5)
+  # ---------------------------------------------------------------------------
+
+
+  nextcloud_green:
+    image: nextcloud:25.0.5-apache
+    environment:
+      - SQLITE_DATABASE=sqlitedatabasexample
+      - NEXTCLOUD_ADMIN_USER_FILE=/1234/ncadminuser
+      - NEXTCLOUD_ADMIN_PASSWORD_FILE=/1234/ncadminpassword
+      - NEXTCLOUD_TRUSTED_DOMAINS_FILE=/1234/nctrusteddomains
+
+    tmpfs:
+      - /var/www:rw,exec,nosuid,size=1g
+      - /1234/:ro,exec,nosuid,size=1m
+    volumes:
+      - ../../ncadminuser.txt:/1234/ncadminuser:ro
+      - ../../ncadminpassword.txt:/1234/ncadminpassword:ro
+      - ../../nctrusteddomains.txt:/1234/nctrusteddomains:ro
+     
+    entrypoint: ["/bin/bash", "-c", "
+      /entrypoint.sh apache2-foreground &
+      sleep 5m && su -s /bin/sh www-data -c 'php occ app:install spreed' || true &&
+      echo '<h1>GREEN INSTANCE </h1>' > /var/www/html/instance-id.html &&
+      wait
+    "]
+    networks:
+      - internal-net
+    deploy:
+      # Start Green 0  Scale to 1 when ready 
+
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.services.green.loadbalancer.server.port=80"
+        - "traefik.http.routers.green.entrypoints=web"
+        - "traefik.http.routers.green.rule=PathPrefix(`/`)"
+
+
+
+
+
+# http://localhost:1234
+# http://localhost:8080
+# su -s /bin/sh www-data
+# su -s /bin/sh www-data -c 'php occ app:list | grep sp'
+# su -s /bin/sh www-data -c 'php occ app:install spreed'
+# su -s /bin/sh www-data -c 'php occ config:system:get trusted_domains'
+# su -s /bin/sh www-data -c ' php occ config:system:set trusted_domains 1 --value="127.0.0.1" '
+# http://localhost:1234/ocs/v2.php/apps/serverinfo/api/v1/info
+# http://localhost:1234/ocs/v2.php/apps/serverinfo/api/v1/info?format=json
+
+# docker swarm init
+# docker stack deploy -c docker-compose.yaml nextcloud_stack
+# docker service scale nextcloud_stack_nextcloud_green=1
+# docker service scale nextcloud_stack_nextcloud_blue=0
+# docker service update --force nextcloud_stack_traefik
+# docker service ls
+# docker stack rm nextcloud_stack
+# docker container prune -f
+
+
+
+
+
+
