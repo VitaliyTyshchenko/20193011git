@@ -1,0 +1,148 @@
+
+
+# Docker Swarm
+
+
+networks:
+  public-net:
+    driver: overlay
+  internal-net:
+    driver: overlay
+
+services:
+  otel-collector:
+      image: otel/opentelemetry-collector-contrib:0.162.0-nightly.ca286cb-amd64
+      container_name: otel-collector
+      hostname: otel-collector
+      ports:
+        - "4317:4317" # OTLP gRPC receiver
+        - "4318:4318" # OTLP HTTP receiver
+      command: ["--config=/etc/otel-collector-config.yaml"]
+      configs:
+        - source: otel_config
+          target: /etc/otel-collector-config.yaml
+
+      networks:
+        - internal-net
+
+  victorialogs:
+      image: victoriametrics/victoria-logs:v1.51.1
+      container_name: victorialogs
+      hostname: victorialogs
+      ports:
+        - "9428:9428"
+      command:
+        - "-storageDataPath=/tmp/victoria-logs-data"
+        - "-retentionPeriod=1d"
+      networks:
+        - internal-net
+
+
+  victoriametrics:
+      image: victoriametrics/victoria-metrics:v1.152.0
+      container_name: victoriametrics
+      hostname: victoriametrics
+      ports:
+        - "8428:8428"
+      command:
+        - "-storageDataPath=/tmp/victoria-metrics-data"
+        - "-retentionPeriod=1d"
+      networks:
+        - internal-net
+
+configs:
+  otel_config:
+    file: ./otel-collector-config.yaml
+
+
+#############################################
+
+
+# file otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      filesystem:
+
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'victorialogs'
+          static_configs:
+            - targets: ['victorialogs:9428']
+
+  filelog:
+      include: [ /hostfs/var/lib/docker/containers/*/*.log ]
+      operators:
+        - type: json_parser
+          parse_from: body
+          parse_to: attributes
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  batch:
+
+exporters:
+  otlphttp:
+    endpoint: "http://victoriametrics:8428/opentelemetry"
+  otlphttp/logs:
+    logs_endpoint: "http://victorialogs:9428/insert/opentelemetry/v1/logs"
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, hostmetrics, prometheus]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp]
+    logs:
+      receivers: [otlp, filelog]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/logs]
+
+
+############
+curl -X POST "http://localhost:9428/insert/jsonline" \
+ -H "Content-Type: application/stream+json" \
+ -d '{"_msg": "111 UI test", "_time": "0"}'
+
+
+curl -X POST -H "Content-Type: application/json" -d '{
+ "resourceLogs": [
+   {
+     "resource": {
+       "attributes": [
+         { "key": "service.name", "value": { "stringValue": "test-service" } }
+       ]
+     },
+     "scopeLogs": [
+       {
+         "logRecords": [
+           {
+             "severityText": "INFO",
+             "body": { "stringValue": "222 UI test" }
+           }
+         ]
+       }
+     ]
+   }
+ ]
+}' http://otel-collector:4318/v1/logs
+
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://otel-collector:4318/v1/logs
+
+############
