@@ -1,0 +1,568 @@
+
+
+
+# Docker Swarm
+
+
+
+
+networks:
+  public-net:
+    driver: overlay
+  internal-net:
+    driver: overlay
+    #internal: true
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # TRAEFIK REVERSE PROXY (Exposed to host port 1234)
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    hostname: traefik
+    ports:
+      - "1234:80"     # Single public endpoint for clients
+      - "1233:8080"   # Traefik Dashboard UI
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+
+
+
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.swarm=true"
+      - "--providers.swarm.network=nextcloud-stack-internal-net"
+
+
+      - "--providers.swarm.exposedByDefault=false"
+      - "--providers.docker.exposedByDefault=false"
+
+
+      - "--providers.file.directory=/1234"
+      - "--providers.file.watch=true"
+
+
+      - "--entrypoints.web.address=:80"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entryPoint=traefik"
+
+
+
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /1234
+
+        cat > /1234/dynamic.yml <<'EOF'
+        http:
+          routers:
+            firefox-blue:
+              rule: "PathPrefix(`/`) && HeaderRegexp(`User-Agent`, `Firefox`)"
+              priority: 100
+              entryPoints:
+                - web
+              service: firefox-service-blue@file
+
+            edge-green:
+              rule: "PathPrefix(`/`) && HeaderRegexp(`User-Agent`, `Edg/`)"
+              priority: 100
+              entryPoints:
+                - web
+              service: edge-service-green@file
+
+            default:
+              rule: "PathPrefix(`/`)"
+              priority: 1
+              entryPoints:
+                - web
+              service: nextcloud-weighted@file
+
+          services:
+            firefox-service-blue:
+              weighted:
+                services:
+                  - name: bluefirefox@swarm
+                    weight: 100
+
+            edge-service-green:
+              weighted:
+                services:
+                  - name: greenedge@swarm
+                    weight: 100
+
+            nextcloud-weighted:
+              weighted:
+                services:
+                  - name: bluefirefox@swarm
+                    weight: 50
+                  - name: greenedge@swarm
+                    weight: 50
+        EOF
+
+        exec traefik "$$@"
+
+
+    networks:
+      - public-net
+      - internal-net
+
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - "traefik.enable=false"
+
+  # ---------------------------------------------------------------------------
+  # NEXTCLOUD BLUE (v25.0.4)
+  # ---------------------------------------------------------------------------
+
+
+  nextcloudbluefirefox:
+    image: nextcloud:25.0.4-apache
+
+    container_name: nextcloudbluefirefox
+    hostname: nextcloudbluefirefox
+
+    environment:
+      - SQLITE_DATABASE=sqlitedatabasexample
+      - NEXTCLOUD_ADMIN_USER_FILE=/1234/ncadminuser
+      - NEXTCLOUD_ADMIN_PASSWORD_FILE=/1234/ncadminpassword
+      - NEXTCLOUD_TRUSTED_DOMAINS_FILE=/1234/nctrusteddomains
+
+    tmpfs:
+      - /var/www:rw,exec,nosuid,size=1g
+      - /1234/:ro,exec,nosuid,size=1m
+    volumes:
+      - ../../ncadminuser.txt:/1234/ncadminuser:ro
+      - ../../ncadminpassword.txt:/1234/ncadminpassword:ro
+      - ../../nctrusteddomains.txt:/1234/nctrusteddomains:ro
+     
+    entrypoint: ["/bin/bash", "-c", "
+      /entrypoint.sh apache2-foreground &
+      sleep 5m && su -s /bin/sh www-data -c 'php occ app:install spreed' || true &&
+      su -s /bin/sh www-data -c 'php occ app:disable survey_client' || true &&
+      echo '<h1>BLUE INSTANCE </h1>' > /var/www/html/instance-id.html &&
+      wait "]
+
+    networks:
+      - internal-net
+
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.services.bluefirefox.loadbalancer.server.port=80"
+        - "traefik.http.routers.bluefirefox.entrypoints=web"
+        - "traefik.http.routers.bluefirefox.rule=PathPrefix(`/`)"
+
+
+
+
+  # ---------------------------------------------------------------------------
+  # NEXTCLOUD GREEN (v25.0.5)
+  # ---------------------------------------------------------------------------
+
+
+  nextcloudgreenedge:
+    image: nextcloud:25.0.5-apache
+
+    container_name: nextcloudgreenedge
+    hostname: nextcloudgreenedge
+
+    environment:
+      - SQLITE_DATABASE=sqlitedatabasexample
+      - NEXTCLOUD_ADMIN_USER_FILE=/1234/ncadminuser
+      - NEXTCLOUD_ADMIN_PASSWORD_FILE=/1234/ncadminpassword
+      - NEXTCLOUD_TRUSTED_DOMAINS_FILE=/1234/nctrusteddomains
+
+    tmpfs:
+      - /var/www:rw,exec,nosuid,size=1g
+      - /1234/:ro,exec,nosuid,size=1m
+    volumes:
+      - ../../ncadminuser.txt:/1234/ncadminuser:ro
+      - ../../ncadminpassword.txt:/1234/ncadminpassword:ro
+      - ../../nctrusteddomains.txt:/1234/nctrusteddomains:ro
+     
+    entrypoint: ["/bin/bash", "-c", "
+      /entrypoint.sh apache2-foreground &
+      sleep 5m && su -s /bin/sh www-data -c 'php occ app:install spreed' || true &&
+      su -s /bin/sh www-data -c 'php occ app:disable survey_client' || true &&
+      echo '<h1>GREEN INSTANCE </h1>' > /var/www/html/instance-id.html &&
+      wait "]
+
+
+    networks:
+      - internal-net
+
+
+    deploy:
+      # Start Green 0  Scale to 1 when ready 
+
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.services.greenedge.loadbalancer.server.port=80"
+        - "traefik.http.routers.greenedge.entrypoints=web"
+        - "traefik.http.routers.greenedge.rule=PathPrefix(`/`)"
+
+
+  nextcloud-exporter-greenedge:
+    image: xperimental/nextcloud-exporter:0.9.1
+    container_name: nextcloud-exporter-greenedge
+    hostname: nextcloud-exporter-greenedge
+    ports:
+      - "9203:9205"
+    environment:
+      - NEXTCLOUD_SERVER=http://nextcloudgreenedge:80
+      - NEXTCLOUD_USERNAME=1
+      - NEXTCLOUD_PASSWORD=1
+    networks:
+      - internal-net
+    deploy:
+      replicas: 1
+
+
+  nextcloud-exporter-bluefirefox:
+    image: xperimental/nextcloud-exporter:0.9.1
+    container_name: nextcloud-exporter-bluefirefox
+    hostname: nextcloud-exporter-bluefirefox
+    ports:
+      - "9205:9205"
+    environment:
+      - NEXTCLOUD_SERVER=http://nextcloudbluefirefox:80
+      - NEXTCLOUD_USERNAME=1
+      - NEXTCLOUD_PASSWORD=1
+    networks:
+      - internal-net
+    deploy:
+      replicas: 1
+
+# http://localhost:1234
+# http://localhost:8080
+# su -s /bin/sh www-data
+# su -s /bin/sh www-data -c 'php occ app:list | grep sp'
+# su -s /bin/sh www-data -c 'php occ app:install spreed'
+# su -s /bin/sh www-data -c 'php occ config:system:get trusted_domains'
+# su -s /bin/sh www-data -c ' php occ config:system:set trusted_domains 1 --value="127.0.0.1" '
+# http://localhost:1234/ocs/v2.php/apps/serverinfo/api/v1/info
+# http://localhost:1234/ocs/v2.php/apps/serverinfo/api/v1/info?format=json
+
+# docker swarm init
+# docker stack deploy -c docker-compose.yaml nextcloud-stack
+# docker service scale nextcloud-stack-nextcloud-green=1
+# docker service scale nextcloud-stack-nextcloud-blue=0
+# docker service update --force nextcloud-stack-traefik
+# docker service ls
+# docker stack rm nextcloud-stack
+# docker container prune -f
+
+
+  # ---------------------------------------------------------------------------
+  # MONITORING
+  # ---------------------------------------------------------------------------
+
+# local http://127.0.0.1:9090/api/v1/query?query=process_cpu_seconds_total
+# local http://127.0.0.1:9090/metrics
+# from container Connection Prometheus server URL http://prometheus:9090
+
+  
+  
+  prometheus:
+    image: prom/prometheus:v3.13.3
+
+    container_name: prometheus
+    hostname: prometheus
+    
+    ports:
+      - "9090:9090"
+    
+    environment:
+
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://otel-collector:4318/v1/logs
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        printf 'global:
+          scrape_interval: 15s
+
+        scrape_configs:
+          - job_name: "grafana"
+            static_configs:
+              - targets: ["grafana:3000"]
+              
+
+          - job_name: "node-exporter"
+            static_configs:
+              - targets: ["node-exporter:9100"]
+
+          - job_name: "traefik"
+            static_configs:
+              - targets: ["traefik:8080"]
+
+          - job_name: "nextcloud-exporter-greenedge"
+            static_configs:
+              - targets: ["nextcloud-exporter-greenedge:9205"]
+
+          - job_name: "nextcloud-exporter-bluefirefox"
+            static_configs:
+              - targets: ["nextcloud-exporter-bluefirefox:9205"]
+
+        ' > /etc/prometheus/prometheus.yml && /bin/prometheus --config.file=/etc/prometheus/prometheus.yml  
+
+
+    networks:
+      - internal-net
+    deploy:
+      replicas: 1
+      # labels:
+      #   - "traefik.enable=true"
+      #   - "traefik.http.routers.greenedge.entrypoints=web"
+      #   - "traefik.http.services.greenedge.loadbalancer.server.port=9090"
+
+
+  node-exporter:
+   image: prom/node-exporter:v1.12.1
+   ports:
+      - "9100:9100"
+   container_name: node-exporter
+
+   volumes:
+     - /proc:/host/proc:ro
+     - /sys:/host/sys:ro
+     - /:/rootfs:ro
+   command:
+     - '--path.procfs=/host/proc'
+     - '--path.sysfs=/host/sys'
+     - '--path.rootfs=/rootfs'
+
+   networks:
+     - internal-net
+
+   deploy:
+     replicas: 1
+    
+
+
+
+  grafana:
+    image: grafana/grafana:13.0
+    ports:
+      - "3000:3000"
+
+    container_name: grafana
+    hostname: grafana
+
+    environment:
+      - GF_SECURITY_ADMIN_USER=1
+      - GF_SECURITY_ADMIN_PASSWORD=1
+      - GF_USERS_DEFAULT_THEME=light
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+
+    networks:
+      - internal-net
+
+    # entrypoint: ["/bin/sh", "-c"]
+    # command:
+    #   - |
+    #     mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards &&
+    #     printf 'apiVersion: 1\ndatasources:\n  - name: Prometheus\n    type: prometheus\n    access: proxy\n    url: http://prometheus:9090\n    isDefault: true\n' > /etc/grafana/provisioning/datasources/ds.yaml &&
+    #     printf 'apiVersion: 1\nproviders:\n  - name: "Default"\n    orgId: 1\n    folder: ""\n    type: file\n    disableDeletion: false\n    editable: true\n    options:\n      path: /var/lib/grafana/dashboards\n' > /etc/grafana/provisioning/dashboards/dash.yaml &&
+    #     printf '{"id":null,"title":"CPU Dashboard","panels":[{"type":"timeseries","title":"CPU Seconds Total","gridPos":{"x":0,"y":0,"w":24,"h":12},"targets":[{"expr":"process_cpu_seconds_total","refId":"A"}]}]}' > /var/lib/grafana/dashboards/cpu.json &&
+    #     /run.sh &
+    #     pid=$$!
+    #     until nc -z localhost 3000; do sleep 1; done
+    #     wait $$pid
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards
+
+        cat << 'EOF' > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            access: proxy
+            url: http://prometheus:9090
+            isDefault: true
+
+          - name: Loki
+            type: loki
+            access: proxy
+            url: http://loki:3100
+            isDefault: false
+
+
+        EOF
+
+        cat << 'EOF' > /etc/grafana/provisioning/dashboards/dash.yaml
+        apiVersion: 1
+        providers:
+          - name: "Default"
+            orgId: 1
+            folder: ""
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards
+        EOF
+
+        cat << 'EOF' > /var/lib/grafana/dashboards/cpu.json
+        {
+          "id": null,
+          "title": "CPU Dashboard",
+          "panels": [
+            {
+              "type": "timeseries",
+              "title": "CPU Seconds Total",
+              "gridPos": {"x": 0, "y": 0, "w": 24, "h": 12},
+              "targets": [{"expr": "process_cpu_seconds_total", "refId": "A"}]
+            }
+          ]
+        }
+        EOF
+
+        /run.sh &
+        pid=$$!
+        until nc -z localhost 3000; do sleep 1; done
+        wait $$pid
+
+
+    deploy:
+      replicas: 1
+      # labels:
+      #   - "traefik.enable=true"
+      #   - "traefik.http.routers.bluefirefox.entrypoints=web"
+      #   - "traefik.http.services.bluefirefox.loadbalancer.server.port=3000"
+
+
+#################################################################
+# Metrics pipeline: Nextcloud Exporter > Prometheus > Grafana 
+# Log pipeline: Alloy > Loki > Grafana 
+
+# alternatives Alloy are Promtail, Grafana Alloy, Filebeat
+
+# Alloy: The collector (gathers logs from Docker containers and sends them out)
+# Loki: The database/storage engine (receives, indexes, and stores the logs for querying)
+
+# http://127.0.0.1:3100/metrics
+# http://127.0.0.1:12345/
+# http://127.0.0.1:12345/graph
+# http://127.0.0.1:12345/graphql/playground
+
+  loki:
+    image: grafana/loki:main-debf9c2
+    container_name: loki
+    hostname: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml -reporting.enabled=false
+    networks:
+      - internal-net
+    deploy:
+      replicas: 1
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    container_name: aloy
+    hostname: aloy
+    ports:
+      - "12345:12345"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat << 'EOF' > /etc/alloy/config.alloy
+        livedebugging {
+          enabled = true
+        }
+        logging {
+          level = "debug"
+          format = "logfmt"
+          write_to = [loki.process.alloy.receiver]
+        }
+        loki.process "alloy" {
+          stage.labels {
+            values = {
+              service_name = "alloy",
+            }
+          }
+          forward_to = [loki.write.loki_endpoint.receiver]
+        }
+
+
+
+        discovery.docker "containers" {
+          host = "unix:///var/run/docker.sock"
+          
+        }
+         
+        discovery.relabel "docker_logs" {
+          targets = discovery.docker.containers.targets
+          rule {
+            source_labels = ["__meta_docker_container_label_com_docker_swarm_service_name"]
+            target_label  = "service_name"
+          }
+          rule {
+            source_labels = ["__meta_docker_container_name"]
+            regex         = "/(.*)"
+            target_label  = "container"
+          }
+        }
+
+
+
+
+        loki.process "containers" {
+          stage.labels {
+            values = {
+              service_name = "",
+            }
+          }
+          forward_to = [loki.write.loki_endpoint.receiver]
+        }
+
+        loki.source.docker "container_logs" {
+          host        = "unix:///var/run/docker.sock"
+          targets     = discovery.relabel.docker_logs.output
+          forward_to  = [loki.write.loki_endpoint.receiver]
+        }
+        loki.write "loki_endpoint" {
+          endpoint {
+            url = "http://loki:3100/loki/api/v1/push"
+          }
+        }
+        EOF
+        exec /bin/alloy run --disable-reporting --stability.level=experimental --server.http.enable-graphql --server.http.enable-graphql-playground --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+
+
+    networks:
+      - internal-net
+    deploy:
+      replicas: 1
+
+#################################################################
+# docker stack deploy -c docker-compose.yaml nextcloud-stack
+# http://127.0.0.1:3100/ready loki
+# Ingester not ready: waiting for 15s after being ready should be ready
+# docker system df
+# http://127.0.0.1:3100/loki/api/v1/label/service_name/values matches the discovery services
+
