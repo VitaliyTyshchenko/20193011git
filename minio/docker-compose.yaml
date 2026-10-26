@@ -1,0 +1,117 @@
+
+
+# Docker Swarm
+
+#   image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z Community-maintained fork of minio/mc the S3 Alternative CLI
+# image: minio/minio:RELEASE.2025-10-15T17-29-55Z
+
+# https://github.com/pgsty/silo
+# https://hub.docker.com/r/pgsty/mc/tags
+# https://hub.docker.com/r/pgsty/minio/tags
+# silo-console-windows-amd64.exe with text preview
+# https://silo.pgsty.com/blog/design/console-text-preview/
+
+networks:
+  s3minionetwork:
+    driver: overlay
+    #internal: true
+
+
+services:
+
+  minio:
+      container_name: minio
+      
+      image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+      #image: minio/minio:RELEASE.2025-10-15T17-29-55Z
+
+      # api 9000  9001 web-based 
+      ports:
+        - "9000:9000"
+        - "9001:9001"
+      volumes:
+        - ./localminiodata:/data
+      environment:
+        MINIO_ROOT_USER: "111"
+        MINIO_ROOT_PASSWORD: "22222222"
+      command: server /data --console-address ":9001"
+
+      networks:
+        - s3minionetwork
+      deploy:
+        replicas: 1
+
+
+
+  mc:
+      container_name: mc
+
+
+      image: pgsty/mc:RELEASE.2026-10-25T00-00-00Z
+      #image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+
+      # https://silo.pgsty.com/download/#client-binary
+      # https://silo.pgsty.com/blog/design/console-text-preview/
+      # https://github.com/pgsty/silo-console
+
+      depends_on:
+        - minio
+      entrypoint:
+        - /bin/sh
+        - -c
+        - |
+          sleep 10
+          /usr/bin/mc alias set local http://minio:9000 111 22222222 &&
+          /usr/bin/mc mb --ignore-existing local/initial-bucket &&
+          /usr/bin/mc version enable local/initial-bucket
+
+      networks:
+        - s3minionetwork
+
+      deploy:
+        replicas: 1
+
+
+  nextcloudbluefirefox:
+    container_name: nextcloudbluefirefox
+    hostname: nextcloudbluefirefox
+
+    image: nextcloud:25.0.4-apache
+
+    ports:
+      - "12345:80"
+
+    environment:
+      - SQLITE_DATABASE=sqlitedatabasexample
+      - NEXTCLOUD_ADMIN_USER=111
+      - NEXTCLOUD_ADMIN_PASSWORD=22222222
+      - NEXTCLOUD_TRUSTED_DOMAINS=nctrusteddomains
+
+    tmpfs:
+      - /var/www:rw,exec,nosuid,size=1g
+
+    # su -s /bin/sh www-data -c 'php occ app:list'
+    # su -s /bin/sh www-data -c 'php occ app:disable support firstrunwizard federation nextcloud_announcements
+    # su -s /bin/sh www-data -c 'php occ app:enable files_external'
+ 
+    entrypoint: ["/bin/bash", "-c", "
+      /entrypoint.sh apache2-foreground &
+      sleep 5m && su -s /bin/sh www-data -c 'php occ app:install spreed' || true &&
+      su -s /bin/sh www-data -c 'php occ app:disable survey_client' || true &&
+      su -s /bin/sh www-data -c 'php occ app:disable support firstrunwizard federation nextcloud_announcements || true &&
+      su -s /bin/sh www-data -c 'php occ app:enable files_external' || true &&
+      echo '<h1>BLUE INSTANCE </h1>' > /var/www/html/instance-id.html &&
+      wait "]
+
+    networks:
+      - s3minionetwork
+
+    deploy:
+      replicas: 1
+
+
+
+# docker stack deploy -c docker-compose.yaml s3stack
+# docker stack rm s3stack
+# docker service scale s3stack_mc=0
+
