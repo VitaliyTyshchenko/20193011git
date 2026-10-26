@@ -1,0 +1,21 @@
+
+
+replicate:
+  apiVersion: v1
+
+  source:
+    type: minio
+    bucket: "2234"
+
+  target:
+    type: minio
+    bucket: "22345"
+    endpoint: "http://127.0.0.1:9000/"
+    credentials:
+      accessKey: 111
+      secretKey: 22222222
+
+  flags:
+    retry:
+      attempts: 2147483647
+      delay: "3m"
