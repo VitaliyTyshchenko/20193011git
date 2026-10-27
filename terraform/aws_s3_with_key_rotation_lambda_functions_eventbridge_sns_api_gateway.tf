@@ -91,12 +91,12 @@ locals {
   tiers = {
     readonly = {
       bucket_actions = ["s3:ListBucket", "s3:GetBucketLocation"]
-      object_actions = ["s3:GetObject"]
+      object_actions = ["s3:GetObject","s3:GetObjectVersion"]
       kms_actions    = ["kms:Decrypt"]
     }
     readwrite = {
       bucket_actions = ["s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketMultipartUploads"]
-      object_actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
+      object_actions = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
       kms_actions    = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"]
     }
     restore = {
