@@ -98,7 +98,7 @@ services:
       /entrypoint.sh apache2-foreground &
       sleep 5m && su -s /bin/sh www-data -c 'php occ app:install spreed' || true &&
       su -s /bin/sh www-data -c 'php occ app:disable survey_client' || true &&
-      su -s /bin/sh www-data -c 'php occ app:disable support firstrunwizard federation nextcloud_announcements || true &&
+      su -s /bin/sh www-data -c 'php occ app:disable support firstrunwizard federation nextcloud_announcements' || true &&
       su -s /bin/sh www-data -c 'php occ app:enable files_external' || true &&
       echo '<h1>BLUE INSTANCE </h1>' > /var/www/html/instance-id.html &&
       wait "]
