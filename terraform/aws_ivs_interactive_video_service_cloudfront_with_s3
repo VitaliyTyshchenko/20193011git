@@ -1,0 +1,520 @@
+# aws_ivs_interactive_video_service_cloudfront_with_s3
+
+# -------------------------
+# S3 FRONTEND
+# -------------------------
+
+resource "aws_s3_bucket" "frontend" {
+  bucket_prefix = "terraformautoivs-frontend-"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_versioning" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  rule {
+    id     = "expire-old-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 7
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# -------------------------
+# AMAZON IVS
+# -------------------------
+
+resource "aws_ivs_channel" "main" {
+  name         = "terraformautoivs"
+  type         = "BASIC"
+  latency_mode = "LOW"
+}
+
+data "aws_ivs_stream_key" "main" {
+  channel_arn = aws_ivs_channel.main.arn
+}
+
+# -------------------------
+# FRONTEND HTML + JAVASCRIPT
+# -------------------------
+
+
+# -------------------------
+# FRONTEND HTML + JAVASCRIPT
+# -------------------------
+
+locals {
+  frontend_html = <<-HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Terraform Auto IVS</title>
+
+  <!-- Amazon IVS Web Broadcast SDK -->
+  <script src="https://web-broadcast.live-video.net/1.40.0/amazon-ivs-web-broadcast.js"></script>
+
+  <!-- Amazon IVS Player SDK -->
+  <script src="https://player.live-video.net/1.57.0/amazon-ivs-player.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111827;
+      color: white;
+      max-width: 850px;
+      margin: 30px auto;
+      padding: 20px;
+    }
+
+    input, button {
+      padding: 12px;
+      margin: 6px 0;
+      border-radius: 6px;
+      border: none;
+    }
+
+    input {
+      width: 95%;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    video, canvas {
+      width: 100%;
+      background: black;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+
+    #status {
+      color: #4ade80;
+      font-weight: bold;
+    }
+
+    .section {
+      margin-top: 25px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>Amazon IVS Live Streaming</h2>
+
+  <p id="status">Ready</p>
+
+  <!-- CAMERA -->
+  <div class="section">
+    <h3>Camera preview</h3>
+    <canvas id="preview"></canvas>
+  </div>
+
+  <!-- BROADCAST -->
+  <div class="section">
+    <h3>Broadcast</h3>
+
+    <input
+      type="password"
+      id="streamKey"
+      placeholder="Enter IVS stream key"
+      autocomplete="off"
+    >
+
+    <br>
+
+    <button id="start">Start broadcasting</button>
+    <button id="stop" disabled>Stop broadcasting</button>
+  </div>
+
+  <!-- PLAYBACK -->
+  <div class="section">
+    <h3>Live playback</h3>
+
+    <video
+      id="player"
+      controls
+      autoplay
+      playsinline
+    ></video>
+
+    <button id="play">Play live stream</button>
+  </div>
+
+<script>
+
+const INGEST_ENDPOINT = "__INGEST_ENDPOINT__";
+const PLAYBACK_URL = "__PLAYBACK_URL__";
+
+let broadcastClient = null;
+let mediaStream = null;
+let ivsPlayer = null;
+
+// -------------------------
+// STATUS
+// -------------------------
+
+function setStatus(message) {
+  document.getElementById("status").textContent = message;
+}
+
+// -------------------------
+// CAMERA + BROADCAST
+// -------------------------
+
+document.getElementById("start").onclick = async () => {
+
+  const streamKey =
+    document.getElementById("streamKey").value.trim();
+
+  if (!streamKey) {
+    alert("Please enter your IVS stream key");
+    return;
+  }
+
+  const startButton = document.getElementById("start");
+  const stopButton = document.getElementById("stop");
+
+  startButton.disabled = true;
+
+  try {
+
+    setStatus("Requesting camera permission...");
+
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 854 },
+        height: { ideal: 480 }
+      },
+      audio: true
+    });
+
+    setStatus("Initializing IVS broadcast...");
+
+    broadcastClient = IVSBroadcastClient.create({
+      streamConfig: IVSBroadcastClient.BASIC_LANDSCAPE,
+      ingestEndpoint: INGEST_ENDPOINT
+    });
+
+    broadcastClient.attachPreview(
+      document.getElementById("preview")
+    );
+
+    await broadcastClient.addVideoInputDevice(
+      new MediaStream(mediaStream.getVideoTracks()),
+      "camera",
+      { index: 0 }
+    );
+
+    await broadcastClient.addAudioInputDevice(
+      new MediaStream(mediaStream.getAudioTracks()),
+      "microphone"
+    );
+
+    setStatus("Connecting to IVS...");
+
+    await broadcastClient.startBroadcast(streamKey);
+
+    setStatus("LIVE - Broadcasting");
+
+    stopButton.disabled = false;
+
+  } catch (error) {
+
+    console.error(error);
+    setStatus("Broadcast error: " + error.message);
+
+    if (broadcastClient) {
+      try {
+        await broadcastClient.stopBroadcast();
+      } catch (_) {}
+      broadcastClient = null;
+    }
+
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+    }
+
+    startButton.disabled = false;
+  }
+};
+
+// -------------------------
+// STOP BROADCAST
+// -------------------------
+
+document.getElementById("stop").onclick = async () => {
+
+  try {
+
+    if (broadcastClient) {
+      await broadcastClient.stopBroadcast();
+      broadcastClient = null;
+    }
+
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+    }
+
+    setStatus("Broadcast stopped");
+
+  } catch (error) {
+
+    setStatus("Stop error: " + error.message);
+
+  }
+
+  document.getElementById("start").disabled = false;
+  document.getElementById("stop").disabled = true;
+};
+
+// -------------------------
+// IVS PLAYER
+// -------------------------
+
+function initializePlayer() {
+
+  if (!IVSPlayer.isPlayerSupported) {
+    setStatus("IVS Player is not supported in this browser");
+    return;
+  }
+
+  const video = document.getElementById("player");
+
+  ivsPlayer = IVSPlayer.create();
+
+  ivsPlayer.attachHTMLVideoElement(video);
+
+  ivsPlayer.load(PLAYBACK_URL);
+
+  setStatus("Player ready. Waiting for live stream...");
+
+}
+
+document.getElementById("play").onclick = async () => {
+
+  try {
+
+    if (!ivsPlayer) {
+      initializePlayer();
+    }
+
+    if (ivsPlayer) {
+      await ivsPlayer.play();
+      setStatus("Playing live stream");
+    }
+
+  } catch (error) {
+
+    setStatus("Playback error: " + error.message);
+
+  }
+};
+
+// Initialize player
+initializePlayer();
+
+</script>
+
+</body>
+</html>
+HTML
+
+  frontend_content = replace(
+    replace(
+      local.frontend_html,
+      "__INGEST_ENDPOINT__",
+      aws_ivs_channel.main.ingest_endpoint
+    ),
+    "__PLAYBACK_URL__",
+    aws_ivs_channel.main.playback_url
+  )
+}
+
+
+# -------------------------
+# UPLOAD FRONTEND
+# -------------------------
+
+resource "aws_s3_object" "frontend" {
+  bucket       = aws_s3_bucket.frontend.id
+  key          = "index.html"
+  content      = local.frontend_content
+  content_type = "text/html"
+  etag         = md5(local.frontend_content)
+}
+
+# -------------------------
+# CLOUDFRONT OAC
+# -------------------------
+
+resource "aws_cloudfront_origin_access_control" "frontend" {
+  name                              = "terraformautoivs-oac"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+# -------------------------
+# CLOUDFRONT
+# -------------------------
+
+resource "aws_cloudfront_distribution" "frontend" {
+  enabled             = true
+  default_root_object = "index.html"
+  price_class         = "PriceClass_100"
+
+  origin {
+    domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
+    origin_id                = "frontend"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "frontend"
+    viewer_protocol_policy = "redirect-to-https"
+
+    allowed_methods = ["GET", "HEAD"]
+    cached_methods  = ["GET", "HEAD"]
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 60
+    max_ttl     = 300
+  }
+
+  custom_error_response {
+    error_code            = 403
+    response_code         = 200
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 0
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+}
+
+# -------------------------
+# S3 BUCKET POLICY
+# -------------------------
+
+data "aws_iam_policy_document" "frontend" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.frontend.arn}/*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.frontend.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+  policy = data.aws_iam_policy_document.frontend.json
+}
+
+# -------------------------
+# OUTPUTS
+# -------------------------
+
+output "website_url" {
+  value = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
+output "ivs_ingest_endpoint" {
+  value = aws_ivs_channel.main.ingest_endpoint
+}
+
+output "ivs_playback_url" {
+  value = aws_ivs_channel.main.playback_url
+}
+
+output "ivs_stream_key" {
+  value     = data.aws_ivs_stream_key.main.value
+  #sensitive = true
+}
+
+output "frontend_bucket" {
+  value = aws_s3_bucket.frontend.bucket
+}
+
+# -------------------------
+# DEPLOYMENT LOG
+# -------------------------
+
+resource "null_resource" "deployment_log" {
+  triggers = {
+    website = aws_cloudfront_distribution.frontend.domain_name
+  }
+
+  provisioner "local-exec" {
+    command = "echo 'Infrastructure deployed: ${aws_cloudfront_distribution.frontend.domain_name}' >> logs.txt"
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "echo 'Terraform infrastructure destroyed' >> logs.txt"
+  }
+
+  depends_on = [
+    aws_s3_bucket_policy.frontend,
+    aws_s3_object.frontend
+  ]
+}
+
